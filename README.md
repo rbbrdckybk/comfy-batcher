@@ -11,8 +11,6 @@ A simple command-line, API-driven, batch-prompter for ComfyUI with a workflow fo
 
 A working, up-to-date ComfyUI installation that can run a FLUX.1-dev workflow. If you need help getting your ComfyUI set up properly, [this is a good guide](https://www.reddit.com/r/StableDiffusion/comments/1ehv1mh/running_flow1_dev_on_12gb_vram_observation_on/).
 
-I've tested on a 12GB 3060 Windows 10 machine, and a 16GB 4060 Ti Ubuntu machine (both with 64GB system RAM) with no issues. 12GB of VRAM seems to be the minimum for now; 32GB of system RAM should be enough with nothing else significant running.
-
 # Setup
 
 **[1]** Navigate to wherever you want ComfyUI Batcher to live, then clone this repository and switch to its directory:
