@@ -23,7 +23,7 @@ Assuming you're running in the same virtual environment as ComfyUI, you shouldn'
 
 # Usage
 
-Make sure your ComfyUI installation is currently running. You can run the following to send a couple test prompts:
+Make sure your ComfyUI installation is currently running. You can then run the following to send a couple test prompts:
 ```
 python comfy-batcher.py --workflow_file flux_workflow_api.json --prompt_file example-prompts.txt
 ```
