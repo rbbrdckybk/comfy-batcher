@@ -31,4 +31,4 @@ python comfy-batcher.py --workflow_file flux_workflow_api.json --prompt_file exa
 ```
 Or simply run the ```go.bat``` file if you're on Windows.
 
-ComfyUI should start working on the prompts immediately, and you should see the results in a few seconds/minutes (depending on your GPU hardware).
+ComfyUI should start working on the prompts immediately, and you should see the results in your ComfyUI output folder in a few seconds/minutes (depending on your GPU hardware).
