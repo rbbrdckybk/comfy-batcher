@@ -5,9 +5,11 @@
 # Example: python comfy-batcher.py --workflow_file flux_workflow_api.json --prompt_file example-prompts.txt
 
 import json
+import re
 from urllib import request, parse
 from os.path import exists
 from collections import deque
+from datetime import datetime as dt
 import random
 import argparse
 
@@ -84,6 +86,12 @@ if __name__ == '__main__':
         help='JSON file containing a ComfyUI workflow'
     )
     ap.add_argument(
+        '--output_file_prefix',
+        type=str,
+        default='flux_<date>',
+        help='prefix to prepend to your output files'
+    )
+    ap.add_argument(
         '--width',
         type=int,
         default=1024,
@@ -147,6 +155,7 @@ if __name__ == '__main__':
     guidance_node = None
     sampler_node = None
     scheduler_node = None
+    save_node = None
     print('\nSearching for nodes in workflow...')
     for node in workflow:
         data = workflow[node]
@@ -170,6 +179,9 @@ if __name__ == '__main__':
             elif data["_meta"]["title"].lower().strip() == 'basicscheduler':
                 print('  Found scheduler node...')
                 scheduler_node = workflow[node]
+            elif data["_meta"]["title"].lower().strip() == 'save image':
+                print('  Found output filename node...')
+                save_node = workflow[node]
 
     if prompt_node == None:
         print('Unable to locate prompt node in workflow; aborting!')
@@ -187,8 +199,9 @@ if __name__ == '__main__':
             # set the text prompt for positive CLIPTextEncode node
             prompt = pf.next_line()
             prompt_node["inputs"]["text"] = prompt
+            rseed = random.randint(1, 18446744073709551614)
             if noise_node != None:
-                noise_node["inputs"]["noise_seed"] = random.randint(1, 18446744073709551614)
+                noise_node["inputs"]["noise_seed"] = rseed
             if sampler_node != None:
                 sampler_node["inputs"]["sampler_name"] = options.sampler
             if scheduler_node != None:
@@ -199,6 +212,18 @@ if __name__ == '__main__':
             if size_node != None:
                 size_node["inputs"]["width"] = options.width
                 size_node["inputs"]["height"] = options.height
+            if save_node != None:
+                prefix = options.output_file_prefix
+                prefix = re.sub('<width>', str(options.width), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<height>', str(options.height), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<sampler>', str(options.sampler), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<scheduler>', str(options.scheduler), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<steps>', str(options.steps), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<guidance>', str(options.guidance), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<seed>', str(rseed), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<date>', dt.now().strftime('%Y%m%d'), prefix, flags=re.IGNORECASE)
+                prefix = re.sub('<time>', dt.now().strftime('%H%M%S'), prefix, flags=re.IGNORECASE)
+                save_node["inputs"]["filename_prefix"] = prefix
 
             status = queue_prompt(workflow, options.server_addr, options.auth_token)
             if status == '':
