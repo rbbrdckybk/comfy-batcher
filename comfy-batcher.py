@@ -6,7 +6,9 @@
 
 import json
 import re
+import unicodedata
 from urllib import request, parse
+from tqdm import tqdm
 from os.path import exists
 from collections import deque
 from datetime import datetime as dt
@@ -54,6 +56,19 @@ def queue_prompt(prompt_workflow, address = 'http://127.0.0.1', token = ''):
     else:
         status = ''
     return status
+
+
+# Taken from https://github.com/django/django/blob/master/django/utils/text.py
+# Using here to make filesystem-safe names
+def slugify(value, allow_unicode=False):
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    value = re.sub(r'[-\s]+', '-', value).strip('-_')
+
 
 # entry point
 if __name__ == '__main__':
@@ -139,7 +154,7 @@ if __name__ == '__main__':
         print('Error: specified workflow file ' + options.workflow_file + ' does not exist; aborting!')
         exit(-1)
 
-    # load the workflow from fil, assign it to variable named prompt_workflow
+    # load the workflow from file, assign it to variable named prompt_workflow
     workflow = None
     try:
         workflow = json.load(open(options.workflow_file))
@@ -192,8 +207,10 @@ if __name__ == '__main__':
     pf = TextFile(options.prompt_file)
     print('\nFound ' + str(pf.lines_remaining()) + ' prompts in ' + options.prompt_file + '...')
 
+
     if pf.lines_remaining() > 0:
         print('\nSending prompts to ' + str(options.server_addr) + '...')
+        pbar = tqdm(total = pf.lines_remaining())
         while pf.lines_remaining() > 0:
             count += 1
             # set the text prompt for positive CLIPTextEncode node
@@ -214,6 +231,7 @@ if __name__ == '__main__':
                 size_node["inputs"]["height"] = options.height
             if save_node != None:
                 prefix = options.output_file_prefix
+                prefix = re.sub('<prompt>', str(prompt[:100]), prefix, flags=re.IGNORECASE)
                 prefix = re.sub('<width>', str(options.width), prefix, flags=re.IGNORECASE)
                 prefix = re.sub('<height>', str(options.height), prefix, flags=re.IGNORECASE)
                 prefix = re.sub('<sampler>', str(options.sampler), prefix, flags=re.IGNORECASE)
@@ -223,12 +241,17 @@ if __name__ == '__main__':
                 prefix = re.sub('<seed>', str(rseed), prefix, flags=re.IGNORECASE)
                 prefix = re.sub('<date>', dt.now().strftime('%Y%m%d'), prefix, flags=re.IGNORECASE)
                 prefix = re.sub('<time>', dt.now().strftime('%H%M%S'), prefix, flags=re.IGNORECASE)
+
+                # limit total prefix length to 200 chars & make it filesystem-safe
+                prefix = prefix[:200]
+                prefix = slugify(prefix)
+
                 save_node["inputs"]["filename_prefix"] = prefix
 
             status = queue_prompt(workflow, options.server_addr, options.auth_token)
-            if status == '':
-                print('\n  Queued prompt #' + str(count) + ': ' + prompt)
-            else:
+            pbar.update(1)
+            if status != '':
                 print('\n  Error sending prompt #' + str(count) + ': ' + status)
 
+        pbar.close()
     print('\nDone!')
