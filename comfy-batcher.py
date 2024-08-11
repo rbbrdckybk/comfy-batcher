@@ -146,7 +146,7 @@ if __name__ == '__main__':
     # load the workflow file as JSON
     workflow = None
     try:
-        workflow = json.load(open(options.workflow_file))
+        workflow = json.load(open(options.workflow_file, encoding='utf-8'))
     except Exception as e:
         print('Failed to load workflow file:', repr(e))
         print('Aborting!')
