@@ -79,6 +79,15 @@ def slugify(value, allow_unicode=False):
     value = re.sub(r'[-\s]+', '-', value).strip('-_')
     return value
 
+
+# sets nested value in dict d to value using keys
+# e.g. d[key[0]][key[1]]... = value
+def set_nested_value(d, keys, value):
+    for key in keys[:-1]:
+        d = d.setdefault(key, {})
+    d[keys[-1]] = value
+
+
 # entry point
 if __name__ == '__main__':
     print('\nStarting...\n')
@@ -205,9 +214,10 @@ if __name__ == '__main__':
             data = workflow[node]
             if data["_meta"]["title"].strip() == title:
                 node_mapping.actual_node = workflow[node]
+                temp = node_mapping.actual_node
                 for key in keys:
-                    if key in node_mapping.actual_node:
-                        node_mapping.actual_node = node_mapping.actual_node[key]
+                    if key in temp:
+                        temp = temp[key]
                     else:
                         # one of the keys does not exist; invalidate this
                         node_mapping.actual_node = None
@@ -250,7 +260,10 @@ if __name__ == '__main__':
                     elif node_mapping.arg_name.lower() == 'seed':
                         if value.lower().strip() in ['random', '0', '-1', '?']:
                             value = str(random.randint(1, 18446744073709551614))
-                    node_mapping.actual_node = value
+
+                    keys = node_mapping.mapping_node_path.split('/', 1)[1]
+                    keys = keys.split('/')
+                    set_nested_value(node_mapping.actual_node, keys, value)
 
             status = queue_prompt(workflow, options.server_addr, options.auth_token)
             pbar.update(1)
