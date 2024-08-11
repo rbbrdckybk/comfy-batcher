@@ -3,8 +3,8 @@ A simple command-line, API-driven, batch-prompter for ComfyUI with a workflow fo
 
 # Features
 
- * Simple command-line interface allows you to quickly queue up hundreds/thousands of prompts from a plain text file and send them to ComfyUI via the API (currently only the included Flux.1 dev workflow is supported, though support for other workflows should be trivial to add).
- * Control over all of the major Flux workflow variables: output image resolution, sampler/scheduler, steps, guidance, etc.
+ * Simple command-line interface allows you to quickly queue up hundreds/thousands of prompts from a plain text file and send them to ComfyUI via the API (the Flux.1 dev workflow is is included as an example; any arbitrary ComfyUI workflow can be adapted by creating a corresponding .map file that defines where the prompt and other values should be pulled from).
+ * Control over any/all workflow variables via command-line arguments (see the example workflow and .map file for how to set up): output image resolution, sampler/scheduler, steps, guidance, etc.
  * Automatic authentication via [ComfyUI-Login](https://github.com/liusida/ComfyUI-Login) is supported.
 
 # Requirements
