@@ -14,6 +14,15 @@ from collections import deque
 from datetime import datetime as dt
 import random
 import argparse
+import copy
+
+# for organizing workflow nodes
+class Node:
+  def __init__(self):
+    self.arg_name = ''
+    self.arg_value = ''
+    self.mapping_node_path = ''
+    self.actual_node = None
 
 # for easy reading of prompt files
 class TextFile():
@@ -72,9 +81,9 @@ def slugify(value, allow_unicode=False):
 
 # entry point
 if __name__ == '__main__':
-    print('\nStarting...')
+    print('\nStarting...\n')
 
-    # get command-line args
+    # define command-line args
     ap = argparse.ArgumentParser()
     ap.add_argument(
         '--server_addr',
@@ -100,61 +109,41 @@ if __name__ == '__main__':
         required=True,
         help='JSON file containing a ComfyUI workflow'
     )
-    ap.add_argument(
-        '--output_file_prefix',
-        type=str,
-        default='flux_<date>',
-        help='prefix to prepend to your output files'
-    )
-    ap.add_argument(
-        '--width',
-        type=int,
-        default=1024,
-        help='width of output image in pixels'
-    )
-    ap.add_argument(
-        '--height',
-        type=int,
-        default=1024,
-        help='height of output image in pixels'
-    )
-    ap.add_argument(
-        '--guidance',
-        type=float,
-        default=3.5,
-        help='cfg guidance scale'
-    )
-    ap.add_argument(
-        '--sampler',
-        type=str,
-        default='euler',
-        help='sampler to use'
-    )
-    ap.add_argument(
-        '--scheduler',
-        type=str,
-        default='simple',
-        help='scheduler to use'
-    )
-    ap.add_argument(
-        '--steps',
-        type=int,
-        default=20,
-        help='number of steps'
-    )
+
+    # grab arbitrary user args as strings
+    parsed, unknown = ap.parse_known_args()
+    for arg in unknown:
+        if arg.startswith(("-", "--")):
+            arg_name = arg.split('=')[0]
+            if arg_name.lower() != 'prompt':
+                ap.add_argument(
+                    arg_name,
+                    type=str
+                )
     options = ap.parse_args()
+
+    # store user-defined arg names for later
+    user_defined_args = []
+    for option in vars(options):
+        if option not in parsed:
+            user_defined_args.append(option.lower())
+
     if options.server_addr.endswith('/'):
         options.server_addr = options.server_addr[:-1]
 
     # ensure required files exist
+    map_filename = options.workflow_file + '.map'
     if not exists(options.prompt_file):
-        print('Error: specified prompt file ' + options.prompt_file + ' does not exist; aborting!')
+        print('Error: specified prompt file "' + options.prompt_file + '" does not exist; aborting!')
         exit(-1)
     if not exists(options.workflow_file):
-        print('Error: specified workflow file ' + options.workflow_file + ' does not exist; aborting!')
+        print('Error: specified workflow file "' + options.workflow_file + '" does not exist; aborting!')
+        exit(-1)
+    if not exists(map_filename):
+        print('Error: specified workflow file "' + options.workflow_file + '" has no associated mapping file ("' + map_filename + '"); aborting!')
         exit(-1)
 
-    # load the workflow from file, assign it to variable named prompt_workflow
+    # load the workflow file as JSON
     workflow = None
     try:
         workflow = json.load(open(options.workflow_file))
@@ -162,51 +151,86 @@ if __name__ == '__main__':
         print('Failed to load workflow file:', repr(e))
         print('Aborting!')
         exit(-1)
+    else:
+        print('Loaded workflow file "' + options.workflow_file + '" successfully.')
 
-    # locate necessary workflow nodes
-    prompt_node = None
-    noise_node = None
-    size_node = None
-    guidance_node = None
-    sampler_node = None
-    scheduler_node = None
-    save_node = None
-    print('\nSearching for nodes in workflow...')
-    for node in workflow:
-        data = workflow[node]
-        if "_meta" in data and "title" in data["_meta"]:
-            #print(data["_meta"]["title"])
-            if data["_meta"]["title"].lower().strip() == 'clip text encode (prompt)':
-                print('  Found prompt node...')
-                prompt_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'randomnoise':
-                print('  Found noise node...')
-                noise_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'empty latent image':
-                print('  Found size node...')
-                size_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'fluxguidance':
-                print('  Found guidance node...')
-                guidance_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'ksamplerselect':
-                print('  Found sampler node...')
-                sampler_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'basicscheduler':
-                print('  Found scheduler node...')
-                scheduler_node = workflow[node]
-            elif data["_meta"]["title"].lower().strip() == 'save image':
-                print('  Found output filename node...')
-                save_node = workflow[node]
+    # load the associated workflow map file
+    nodes = []
+    count = 0
+    found_prompt_mapping = False
+    mappings = {}
+    mf = TextFile(map_filename)
+    while mf.lines_remaining() > 0:
+        line = mf.next_line()
+        if '==' in line:
+            count += 1
+            var = line.split('==', 1)[0].lower().strip()
+            node_loc = line.split('==', 1)[1].strip()
+            mappings[var] = node_loc
+            if var.lower() == 'prompt':
+                found_prompt_mapping = True
+                node = Node()
+                node.arg_name = 'prompt'
+                node.mapping_node_path = node_loc
+                nodes.append(node)
 
-    if prompt_node == None:
-        print('Unable to locate prompt node in workflow; aborting!')
+    if found_prompt_mapping:
+        print('Loaded mapping file "' + map_filename + '" successfully (found ' + str(count) + ' defined mappings).')
+    else:
+        print('Error: specified mapping file "' + map_filename + '" does not contain required "prompt" mapping!')
+        print('Aborting!')
         exit(-1)
+
+    # locate necessary workflow nodes that we have user-supplied arguments for
+    for arg in user_defined_args:
+        if arg in mappings:
+            node = Node()
+            node.arg_name = arg
+            node.arg_value = getattr(options, arg)
+            node.mapping_node_path = mappings[arg]
+            nodes.append(node)
+        else:
+            print(' - Warning: no mapping found for passed argument: --' + arg)
+
+    print('Searching for nodes in workflow...')
+    for node_mapping in nodes:
+        title = node_mapping.mapping_node_path
+        keys = []
+        if '/' in node_mapping.mapping_node_path:
+            title = node_mapping.mapping_node_path.split('/', 1)[0]
+            keys = node_mapping.mapping_node_path.split('/', 1)[1]
+            keys = keys.split('/')
+        # attempt to find this mapping on the actual JSON
+        for node in workflow:
+            data = workflow[node]
+            if data["_meta"]["title"].strip() == title:
+                node_mapping.actual_node = workflow[node]
+                for key in keys:
+                    if key in node_mapping.actual_node:
+                        node_mapping.actual_node = node_mapping.actual_node[key]
+                    else:
+                        # one of the keys does not exist; invalidate this
+                        node_mapping.actual_node = None
+                        break
+                break
+
+    # let user know about any unvalidated nodes
+    count = 0
+    for node_mapping in nodes:
+        if node_mapping.actual_node == None:
+            if node_mapping.arg_name != 'prompt':
+                print(' - Warning: specified mapping node (for arg --' + node_mapping.arg_name + ') does not exist in JSON workflow: "' + node_mapping.mapping_node_path + '"')
+            else:
+                print('Error: Unable to locate specified required prompt node ("' + node_mapping.mapping_node_path + '") in workflow; aborting!')
+                exit(-1)
+        else:
+            count += 1
+    print(' - Successfully located ' + str(count) + ' defined mapping nodes in JSON workflow that arguments were supplied for.')
 
     # Read prompts from specified prompt file and send to ComfyUI via API
     count = 0
     pf = TextFile(options.prompt_file)
-    print('\nFound ' + str(pf.lines_remaining()) + ' prompts in ' + options.prompt_file + '...')
-
+    print('Found ' + str(pf.lines_remaining()) + ' prompts in ' + options.prompt_file + '.')
 
     if pf.lines_remaining() > 0:
         print('\nSending prompts to ' + str(options.server_addr) + '...')
@@ -215,38 +239,18 @@ if __name__ == '__main__':
             count += 1
             # set the text prompt for positive CLIPTextEncode node
             prompt = pf.next_line()
-            prompt_node["inputs"]["text"] = prompt
-            rseed = random.randint(1, 18446744073709551614)
-            if noise_node != None:
-                noise_node["inputs"]["noise_seed"] = rseed
-            if sampler_node != None:
-                sampler_node["inputs"]["sampler_name"] = options.sampler
-            if scheduler_node != None:
-                scheduler_node["inputs"]["scheduler"] = options.scheduler
-                scheduler_node["inputs"]["steps"] = options.steps
-            if guidance_node != None:
-                guidance_node["inputs"]["guidance"] = options.guidance
-            if size_node != None:
-                size_node["inputs"]["width"] = options.width
-                size_node["inputs"]["height"] = options.height
-            if save_node != None:
-                prefix = options.output_file_prefix
-                prefix = re.sub('<prompt>', str(prompt[:100]), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<width>', str(options.width), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<height>', str(options.height), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<sampler>', str(options.sampler), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<scheduler>', str(options.scheduler), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<steps>', str(options.steps), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<guidance>', str(options.guidance), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<seed>', str(rseed), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<date>', dt.now().strftime('%Y%m%d'), prefix, flags=re.IGNORECASE)
-                prefix = re.sub('<time>', dt.now().strftime('%H%M%S'), prefix, flags=re.IGNORECASE)
-
-                # limit total prefix length to 200 chars & make it filesystem-safe
-                prefix = prefix[:200]
-                prefix = slugify(prefix)
-
-                save_node["inputs"]["filename_prefix"] = prefix
+            for node_mapping in nodes:
+                # make updates to the JSON for all good mappings we have
+                if node_mapping.actual_node != None:
+                    value = node_mapping.arg_value
+                    path = node_mapping.mapping_node_path
+                    # handle special args
+                    if node_mapping.arg_name.lower() == 'prompt':
+                        value = prompt
+                    elif node_mapping.arg_name.lower() == 'seed':
+                        if value.lower().strip() in ['random', '0', '-1', '?']:
+                            value = str(random.randint(1, 18446744073709551614))
+                    node_mapping.actual_node = value
 
             status = queue_prompt(workflow, options.server_addr, options.auth_token)
             pbar.update(1)

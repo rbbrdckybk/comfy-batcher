@@ -1,1 +1,1 @@
-python comfy-batcher.py --workflow_file flux_workflow_api.json --prompt_file example-prompts.txt --output_file_prefix "flux_<date>_<sampler>_<scheduler>_<width>x<height>" --sampler euler --scheduler simple --steps 20 --guidance 3.5 --width 1024 --height 1024
+python comfy-batcher.py --workflow_file flux_workflow_api.json --prompt_file example-prompts.txt --seed random --sampler euler --scheduler simple --steps 20 --guidance 3.5 --width 1024 --height 1024
