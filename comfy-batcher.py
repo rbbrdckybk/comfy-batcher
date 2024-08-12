@@ -249,6 +249,7 @@ if __name__ == '__main__':
             count += 1
             # set the text prompt for positive CLIPTextEncode node
             prompt = pf.next_line()
+            rand = random.randint(1, 18446744073709551614)
             for node_mapping in nodes:
                 # make updates to the JSON for all good mappings we have
                 if node_mapping.actual_node != None:
@@ -259,10 +260,41 @@ if __name__ == '__main__':
                         value = prompt
                     elif node_mapping.arg_name.lower() == 'seed':
                         if value.lower().strip() in ['random', '0', '-1', '?']:
-                            value = str(random.randint(1, 18446744073709551614))
+                            value = str(rand)
+                    elif 'filename' in node_mapping.arg_name.lower():
+                        # make requested substitutions in filename arg
+                        value = re.sub('<prompt>', str(prompt[:100]), value, flags=re.IGNORECASE)
+                        value = re.sub('<date>', dt.now().strftime('%Y%m%d'), value, flags=re.IGNORECASE)
+                        value = re.sub('<time>', dt.now().strftime('%H%M%S'), value, flags=re.IGNORECASE)
+                        # do user-variable subs if necessary
+                        while '<' in value and '>' in value:
+                            before = value.split('<', 1)[0]
+                            remaining = value.split('<', 1)[1]
+                            if '>' not in remaining:
+                                break
+                            keyword = remaining.split('>', 1)[0]
+                            after = remaining.split('>', 1)[1]
+                            found = False
+                            for n in nodes:
+                                if keyword.lower().strip() == n.arg_name.lower().strip():
+                                    found = True
+                                    if keyword == 'seed' and n.arg_value in ['random', '0', '-1', '?']:
+                                        keyword = str(rand)
+                                    else:
+                                        keyword = str(n.arg_value)
+                                    break
+                            if found:
+                                value = before + keyword + after
+                            else:
+                                value = before + after
+
+                        # limit total prefix length to 200 chars & make it filesystem-safe
+                        value = value[:200]
+                        value = slugify(value)
 
                     keys = node_mapping.mapping_node_path.split('/', 1)[1]
                     keys = keys.split('/')
+                    # update the JSON with the user-supplied value
                     set_nested_value(node_mapping.actual_node, keys, value)
 
             status = queue_prompt(workflow, options.server_addr, options.auth_token)
