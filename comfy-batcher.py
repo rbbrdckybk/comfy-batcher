@@ -263,7 +263,7 @@ if __name__ == '__main__':
                             value = str(rand)
                     elif 'filename' in node_mapping.arg_name.lower():
                         # make requested substitutions in filename arg
-                        value = re.sub('<prompt>', str(prompt[:100]), value, flags=re.IGNORECASE)
+                        value = re.sub('<prompt>', repr(prompt[:100]), value, flags=re.IGNORECASE)
                         value = re.sub('<date>', dt.now().strftime('%Y%m%d'), value, flags=re.IGNORECASE)
                         value = re.sub('<time>', dt.now().strftime('%H%M%S'), value, flags=re.IGNORECASE)
                         # do user-variable subs if necessary
