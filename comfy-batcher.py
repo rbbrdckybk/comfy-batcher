@@ -280,6 +280,8 @@ if __name__ == '__main__':
                                     found = True
                                     if keyword == 'seed' and n.arg_value in ['random', '0', '-1', '?']:
                                         keyword = str(rand)
+                                    elif str(n.arg_value).lower().endswith('.safetensors'):
+                                        keyword = str(n.arg_value)[:-12]
                                     else:
                                         keyword = str(n.arg_value)
                                     break
