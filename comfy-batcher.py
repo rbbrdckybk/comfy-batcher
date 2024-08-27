@@ -282,6 +282,8 @@ if __name__ == '__main__':
                                         keyword = str(rand)
                                     elif str(n.arg_value).lower().endswith('.safetensors'):
                                         keyword = str(n.arg_value)[:-12]
+                                    elif str(n.arg_value).lower().endswith('.sft'):
+                                        keyword = str(n.arg_value)[:-4]
                                     else:
                                         keyword = str(n.arg_value)
                                     break
