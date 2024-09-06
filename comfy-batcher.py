@@ -113,6 +113,18 @@ if __name__ == '__main__':
         help='text file containing a list of prompts to queue'
     )
     ap.add_argument(
+        '--prompt_prepend',
+        type=str,
+        default='',
+        help='text to prepend to every prompt (optional)'
+    )
+    ap.add_argument(
+        '--prompt_append',
+        type=str,
+        default='',
+        help='text to append to every prompt (optional)'
+    )
+    ap.add_argument(
         '--workflow_file',
         type=str,
         required=True,
@@ -247,8 +259,12 @@ if __name__ == '__main__':
         pbar = tqdm(total = pf.lines_remaining())
         while pf.lines_remaining() > 0:
             count += 1
-            # set the text prompt for positive CLIPTextEncode node
+            # set the text prompt for positive prompt node
             prompt = pf.next_line()
+            if options.prompt_prepend != '':
+                prompt = options.prompt_prepend + ' ' + prompt
+            if options.prompt_append != '':
+                prompt += ' ' + options.prompt_append
             rand = random.randint(1, 18446744073709551614)
             for node_mapping in nodes:
                 # make updates to the JSON for all good mappings we have
