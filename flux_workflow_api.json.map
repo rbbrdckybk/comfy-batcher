@@ -4,6 +4,7 @@
 # See examples below that correspond to the example 'flux_workflow_api.json' file.
 # Note that 'prompt' must ALWAYS be defined; this is where the prompts from your prompt file will be inserted!
 # Other than prompt, you only need to map items that you want to be able to access via command-line arguments.
+# You may define 1:N relationships by listing multiple nodes on the right side of the '==' (separate with a comma)
 
 
 prompt 						== CLIP Text Encode (Prompt)/inputs/text
