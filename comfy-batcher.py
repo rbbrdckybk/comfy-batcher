@@ -24,6 +24,13 @@ class Node:
     self.mapping_node_path = ''
     self.actual_node = None
 
+# for 1-to-many mappings
+class Dictlist(dict):
+    def __setitem__(self, key, value):
+        if key not in self:
+            super(Dictlist, self).__setitem__(key, [])
+        self[key].append(value)
+
 # for easy reading of prompt files
 class TextFile():
     def __init__(self, filename):
@@ -179,7 +186,8 @@ if __name__ == '__main__':
     nodes = []
     count = 0
     found_prompt_mapping = False
-    mappings = {}
+    #mappings = {}
+    mappings = Dictlist()
     mf = TextFile(map_filename)
     while mf.lines_remaining() > 0:
         line = mf.next_line()
@@ -187,7 +195,13 @@ if __name__ == '__main__':
             count += 1
             var = line.split('==', 1)[0].lower().strip()
             node_loc = line.split('==', 1)[1].strip()
-            mappings[var] = node_loc
+            if ',' in node_loc:
+                # handle 1-to-many mappings
+                node_locs = node_loc.split(',')
+                for nl in node_locs:
+                    mappings[var] = nl.strip()
+            else:
+                mappings[var] = node_loc
             if var.lower() == 'prompt':
                 found_prompt_mapping = True
                 node = Node()
@@ -205,11 +219,12 @@ if __name__ == '__main__':
     # locate necessary workflow nodes that we have user-supplied arguments for
     for arg in user_defined_args:
         if arg in mappings:
-            node = Node()
-            node.arg_name = arg
-            node.arg_value = getattr(options, arg)
-            node.mapping_node_path = mappings[arg]
-            nodes.append(node)
+            for path in mappings[arg]:
+                node = Node()
+                node.arg_name = arg
+                node.arg_value = getattr(options, arg)
+                node.mapping_node_path = path
+                nodes.append(node)
         else:
             print(' - Warning: no mapping found for passed argument: --' + arg)
 
@@ -238,16 +253,20 @@ if __name__ == '__main__':
 
     # let user know about any unvalidated nodes
     count = 0
+    found_nodes = ''
     for node_mapping in nodes:
         if node_mapping.actual_node == None:
             if node_mapping.arg_name != 'prompt':
-                print(' - Warning: specified mapping node (for arg --' + node_mapping.arg_name + ') does not exist in JSON workflow: "' + node_mapping.mapping_node_path + '"')
+                print(' - Warning: specified mapping node (for arg --' + str(node_mapping.arg_name) + ') does not exist in JSON workflow: "' + str(node_mapping.mapping_node_path) + '"')
             else:
                 print('Error: Unable to locate specified required prompt node ("' + node_mapping.mapping_node_path + '") in workflow; aborting!')
                 exit(-1)
         else:
+            if count > 0:
+                found_nodes += ', '
+            found_nodes += node_mapping.arg_name
             count += 1
-    print(' - Successfully located ' + str(count) + ' defined mapping nodes in JSON workflow that arguments were supplied for.')
+    print(' - Successfully located ' + str(count) + ' defined mapping nodes (' + found_nodes + ') in JSON workflow that arguments were supplied for.')
 
     # Read prompts from specified prompt file and send to ComfyUI via API
     count = 0
@@ -265,7 +284,7 @@ if __name__ == '__main__':
                 prompt = options.prompt_prepend + ' ' + prompt
             if options.prompt_append != '':
                 prompt += ' ' + options.prompt_append
-            rand = random.randint(1, 18446744073709551614)
+            rand = random.randint(1, 999999999999999)
             for node_mapping in nodes:
                 # make updates to the JSON for all good mappings we have
                 if node_mapping.actual_node != None:
