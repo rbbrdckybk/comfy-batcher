@@ -137,6 +137,12 @@ if __name__ == '__main__':
         required=True,
         help='JSON file containing a ComfyUI workflow'
     )
+    ap.add_argument(
+        '--truncate_prompt_length',
+        type=int,
+        default=0,
+        help='set an optional character limit to truncate prompts at; 0 = no limit'
+    )
 
     # grab arbitrary user args as strings
     parsed, unknown = ap.parse_known_args()
@@ -284,6 +290,8 @@ if __name__ == '__main__':
                 prompt = options.prompt_prepend + ' ' + prompt
             if options.prompt_append != '':
                 prompt += ' ' + options.prompt_append
+            if options.truncate_prompt_length > 0:
+                prompt = prompt[:options.truncate_prompt_length]
             rand = random.randint(1, 999999999999999)
             for node_mapping in nodes:
                 # make updates to the JSON for all good mappings we have
