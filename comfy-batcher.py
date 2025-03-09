@@ -210,10 +210,17 @@ if __name__ == '__main__':
                 mappings[var] = node_loc
             if var.lower() == 'prompt':
                 found_prompt_mapping = True
-                node = Node()
-                node.arg_name = 'prompt'
-                node.mapping_node_path = node_loc
-                nodes.append(node)
+                if ',' in node_loc:
+                    for nl in node_locs:
+                        node = Node()
+                        node.arg_name = 'prompt'
+                        node.mapping_node_path = nl.strip()
+                        nodes.append(node)
+                else:
+                    node = Node()
+                    node.arg_name = 'prompt'
+                    node.mapping_node_path = node_loc
+                    nodes.append(node)
 
     if found_prompt_mapping:
         print('Loaded mapping file "' + map_filename + '" successfully (found ' + str(count) + ' defined mappings).')
