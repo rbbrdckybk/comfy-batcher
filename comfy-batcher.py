@@ -315,7 +315,13 @@ if __name__ == '__main__':
                     elif node_mapping.arg_name.lower() == 'seed':
                         if value.lower().strip() in ['random', '0', '-1', '?']:
                             value = str(rand)
-                    elif 'filename' in node_mapping.arg_name.lower():
+                    elif (
+                        'file' in node_mapping.arg_name.lower()
+                        and
+                        ('name' in node_mapping.arg_name.lower()
+                        or 
+                        'path' in node_mapping.arg_name.lower())
+                    ):
                         # make requested substitutions in filename arg
                         if 'path' in node_mapping.arg_name.lower():
                             value = re.sub('<prompt>', slugify(prompt[:100], False, True), value, flags=re.IGNORECASE)
