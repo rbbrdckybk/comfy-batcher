@@ -76,13 +76,17 @@ def queue_prompt(prompt_workflow, address = 'http://127.0.0.1', token = ''):
 
 # Taken from https://github.com/django/django/blob/master/django/utils/text.py
 # Using here to make filesystem-safe names
-def slugify(value, allow_unicode=False):
+def slugify(value, allow_unicode=False, allow_pathsep=False):
     value = str(value)
     if allow_unicode:
         value = unicodedata.normalize('NFKC', value)
     else:
         value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value.lower())
+    if allow_pathsep:
+        # added 2025-04-12 BK, allows path separators if specified
+        value = re.sub(r'[^\w\s-][\\\/]', '', value.lower())
+    else:
+        value = re.sub(r'[^\w\s-]', '', value.lower())
     value = re.sub(r'[-\s]+', '-', value).strip('-_')
     return value
 
@@ -313,7 +317,10 @@ if __name__ == '__main__':
                             value = str(rand)
                     elif 'filename' in node_mapping.arg_name.lower():
                         # make requested substitutions in filename arg
-                        value = re.sub('<prompt>', slugify(prompt[:100]), value, flags=re.IGNORECASE)
+                        if 'path' in node_mapping.arg_name.lower():
+                            value = re.sub('<prompt>', slugify(prompt[:100], False, True), value, flags=re.IGNORECASE)
+                        else:
+                            value = re.sub('<prompt>', slugify(prompt[:100]), value, flags=re.IGNORECASE)
                         value = re.sub('<date>', dt.now().strftime('%Y%m%d'), value, flags=re.IGNORECASE)
                         value = re.sub('<time>', dt.now().strftime('%H%M%S'), value, flags=re.IGNORECASE)
                         # do user-variable subs if necessary
@@ -344,7 +351,11 @@ if __name__ == '__main__':
 
                         # limit total prefix length to 200 chars & make it filesystem-safe
                         value = value[:200]
-                        value = slugify(value)
+                        if 'path' in node_mapping.arg_name.lower():
+                            value = slugify(value, False, True)
+                        else:
+                            value = slugify(value)
+
 
                     keys = node_mapping.mapping_node_path.split('/', 1)[1]
                     keys = keys.split('/')
