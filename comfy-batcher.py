@@ -34,6 +34,7 @@ class Dictlist(dict):
 # for easy reading of prompt files
 class TextFile():
     def __init__(self, filename):
+        self.total_non_directives = 0
         self.lines = deque()
         if exists(filename):
             with open(filename, encoding = 'utf-8') as f:
@@ -47,12 +48,17 @@ class TextFile():
                 if x != "":
                     # these lines are actual prompts
                     self.lines.append(x)
+                    if x[0] != '!':
+                        self.total_non_directives += 1
 
     def next_line(self):
         return self.lines.popleft()
 
     def lines_remaining(self):
         return len(self.lines)
+
+    def total_non_directives(self):
+        return self.total_non_directives
 
 def queue_prompt(prompt_workflow, address = 'http://127.0.0.1', token = ''):
     status = ''
@@ -292,86 +298,112 @@ if __name__ == '__main__':
 
     if pf.lines_remaining() > 0:
         print('\nSending prompts to ' + str(options.server_addr) + '...')
-        pbar = tqdm(total = pf.lines_remaining())
+        pbar = tqdm(total = pf.total_non_directives)
+        directives = {}
         while pf.lines_remaining() > 0:
-            count += 1
-            # set the text prompt for positive prompt node
             prompt = pf.next_line()
-            if options.prompt_prepend != '':
-                prompt = options.prompt_prepend + ' ' + prompt
-            if options.prompt_append != '':
-                prompt += ' ' + options.prompt_append
-            if options.truncate_prompt_length > 0:
-                prompt = prompt[:options.truncate_prompt_length]
-            rand = random.randint(1, 999999999999999)
-            for node_mapping in nodes:
-                # make updates to the JSON for all good mappings we have
-                if node_mapping.actual_node != None:
-                    value = node_mapping.arg_value
-                    path = node_mapping.mapping_node_path
-                    # handle special args
-                    if node_mapping.arg_name.lower() == 'prompt':
-                        value = prompt
-                    elif node_mapping.arg_name.lower() == 'seed':
-                        if value.lower().strip() in ['random', '0', '-1', '?']:
-                            value = str(rand)
-                    elif (
-                        'file' in node_mapping.arg_name.lower()
-                        and
-                        ('name' in node_mapping.arg_name.lower()
-                        or 
-                        'path' in node_mapping.arg_name.lower())
-                    ):
-                        # make requested substitutions in filename arg
-                        if 'path' in node_mapping.arg_name.lower():
-                            value = re.sub('<prompt>', slugify(prompt[:100], False, True), value, flags=re.IGNORECASE)
+            if prompt.strip()[0] == '!' and '=' in prompt:
+                # this is a directive
+                before = prompt.split('=', 1)[0].strip()[1:]
+                after = prompt.split('=', 1)[1].strip()
+                # check to make sure we have a valid mapping and default value for this override
+                if before.lower() in mappings:
+                    found = False
+                    for node_mapping in nodes:
+                        if node_mapping.arg_name.lower() == before.lower():
+                            found = True
+                            break
+                    if found:
+                        directives.update({before.lower() : after})
+                        #print('\nAdded mapping for specified directive override: !' + before.upper())
+                    else:
+                        print('\nWarning: specified directive: !' + before.upper() + ' has no default mapping value; pass in initial arguments before using override!')
+                else:
+                    print('\nWarning: no mapping for specified directive: !' + before.upper())
+            else:
+                # this is a prompt
+                count += 1
+                if options.prompt_prepend != '':
+                    prompt = options.prompt_prepend + ' ' + prompt
+                if options.prompt_append != '':
+                    prompt += ' ' + options.prompt_append
+                if options.truncate_prompt_length > 0:
+                    prompt = prompt[:options.truncate_prompt_length]
+                rand = random.randint(1, 999999999999999)
+                for node_mapping in nodes:
+                    # make updates to the JSON for all good mappings we have
+                    if node_mapping.actual_node != None:
+                        # check for directive value override
+                        if node_mapping.arg_name.lower() in directives:
+                            #print('Found ' + node_mapping.arg_name.lower() + ' in directives!')
+                            value = directives.get(node_mapping.arg_name.lower())
+                            #print('Using ' + value + ' instead of ' + node_mapping.arg_value)
                         else:
-                            value = re.sub('<prompt>', slugify(prompt[:100]), value, flags=re.IGNORECASE)
-                        value = re.sub('<date>', dt.now().strftime('%Y%m%d'), value, flags=re.IGNORECASE)
-                        value = re.sub('<time>', dt.now().strftime('%H%M%S'), value, flags=re.IGNORECASE)
-                        # do user-variable subs if necessary
-                        while '<' in value and '>' in value:
-                            before = value.split('<', 1)[0]
-                            remaining = value.split('<', 1)[1]
-                            if '>' not in remaining:
-                                break
-                            keyword = remaining.split('>', 1)[0]
-                            after = remaining.split('>', 1)[1]
-                            found = False
-                            for n in nodes:
-                                if keyword.lower().strip() == n.arg_name.lower().strip():
-                                    found = True
-                                    if keyword == 'seed' and n.arg_value in ['random', '0', '-1', '?']:
-                                        keyword = str(rand)
-                                    elif str(n.arg_value).lower().endswith('.safetensors'):
-                                        keyword = str(n.arg_value)[:-12]
-                                    elif str(n.arg_value).lower().endswith('.sft'):
-                                        keyword = str(n.arg_value)[:-4]
-                                    else:
-                                        keyword = str(n.arg_value)
-                                    break
-                            if found:
-                                value = before + keyword + after
+                            value = node_mapping.arg_value
+                        path = node_mapping.mapping_node_path
+                        # handle special args
+                        if node_mapping.arg_name.lower() == 'prompt':
+                            value = prompt
+                        elif node_mapping.arg_name.lower() == 'seed':
+                            if value.lower().strip() in ['random', '0', '-1', '?']:
+                                value = str(rand)
+                        elif (
+                            'file' in node_mapping.arg_name.lower()
+                            and
+                            ('name' in node_mapping.arg_name.lower()
+                            or
+                            'path' in node_mapping.arg_name.lower())
+                        ):
+                            # make requested substitutions in filename arg
+                            if 'path' in node_mapping.arg_name.lower():
+                                value = re.sub('<prompt>', slugify(prompt[:100], False, True), value, flags=re.IGNORECASE)
                             else:
-                                value = before + after
+                                value = re.sub('<prompt>', slugify(prompt[:100]), value, flags=re.IGNORECASE)
+                            value = re.sub('<date>', dt.now().strftime('%Y%m%d'), value, flags=re.IGNORECASE)
+                            value = re.sub('<time>', dt.now().strftime('%H%M%S'), value, flags=re.IGNORECASE)
+                            # do user-variable subs if necessary
+                            while '<' in value and '>' in value:
+                                before = value.split('<', 1)[0]
+                                remaining = value.split('<', 1)[1]
+                                if '>' not in remaining:
+                                    break
+                                keyword = remaining.split('>', 1)[0]
+                                after = remaining.split('>', 1)[1]
+                                found = False
+                                for n in nodes:
+                                    if keyword.lower().strip() == n.arg_name.lower().strip():
+                                        found = True
+                                        if keyword == 'seed' and n.arg_value in ['random', '0', '-1', '?']:
+                                            keyword = str(rand)
+                                        elif str(n.arg_value).lower().endswith('.safetensors'):
+                                            keyword = str(n.arg_value)[:-12]
+                                        elif str(n.arg_value).lower().endswith('.sft'):
+                                            keyword = str(n.arg_value)[:-4]
+                                        else:
+                                            keyword = str(n.arg_value)
+                                        break
+                                if found:
+                                    value = before + keyword + after
+                                else:
+                                    value = before + after
 
-                        # limit total prefix length to 200 chars & make it filesystem-safe
-                        value = value[:200]
-                        if 'path' in node_mapping.arg_name.lower():
-                            value = slugify(value, False, True)
-                        else:
-                            value = slugify(value)
+                            # limit total prefix length to 200 chars & make it filesystem-safe
+                            value = value[:200]
+                            if 'path' in node_mapping.arg_name.lower():
+                                value = slugify(value, False, True)
+                            else:
+                                value = slugify(value)
 
 
-                    keys = node_mapping.mapping_node_path.split('/', 1)[1]
-                    keys = keys.split('/')
-                    # update the JSON with the user-supplied value
-                    set_nested_value(node_mapping.actual_node, keys, value)
+                        keys = node_mapping.mapping_node_path.split('/', 1)[1]
+                        keys = keys.split('/')
+                        # update the JSON with the user-supplied value
+                        set_nested_value(node_mapping.actual_node, keys, value)
 
-            status = queue_prompt(workflow, options.server_addr, options.auth_token)
-            pbar.update(1)
-            if status != '':
-                print('\n  Error sending prompt #' + str(count) + ': ' + status)
+                status = queue_prompt(workflow, options.server_addr, options.auth_token)
+                pbar.update(1)
+                if status != '':
+                    print('\n  Error sending prompt #' + str(count) + ': ' + status)
 
         pbar.close()
     print('\nDone!')
